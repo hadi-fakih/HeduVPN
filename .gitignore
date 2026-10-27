@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test / tooling caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local runtime state (keys, certificates, links)
+heduvpn-state/
+*.pem
+*.key
+client.json
+client-link.txt
+relay.json
+systemproxy.json
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

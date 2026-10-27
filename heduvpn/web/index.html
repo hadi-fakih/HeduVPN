@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>HeduVPN · HTTPS-shaped tunnel</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%233ee0b3' d='M16 2 4 7v9c0 7.2 5.1 12.6 12 14 6.9-1.4 12-6.8 12-14V7L16 2z'/%3E%3Cpath fill='%23070b10' d='M11 16.5l3.4 3.4L22 12.4l-1.7-1.7-5.9 5.9-1.7-1.7z'/%3E%3C/svg%3E">
+</head>
+<body>
+<div class="glow glow-a"></div>
+<div class="glow glow-b"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+      <path d="M16 2 4 7v9c0 7.2 5.1 12.6 12 14 6.9-1.4 12-6.8 12-14V7L16 2z" fill="url(#g1)"/>
+      <path d="M11 16.5l3.4 3.4L22 12.4l-1.7-1.7-5.9 5.9-1.7-1.7z" fill="#06110d"/>
+      <defs><linearGradient id="g1" x1="4" y1="2" x2="28" y2="30"><stop stop-color="#5ff0c5"/><stop offset="1" stop-color="#2bbf9a"/></linearGradient></defs>
+    </svg>
+    <div class="brand-text">
+      <strong>HeduVPN</strong>
+      <span>an HTTPS-shaped tunnel</span>
+    </div>
+  </div>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-view="overview" role="tab">Overview</button>
+    <button class="tab" data-view="wire" role="tab">Wire lab</button>
+    <button class="tab" data-view="connect" role="tab">Connect</button>
+    <button class="tab" data-view="guide" role="tab">Guide</button>
+  </nav>
+
+  <div class="top-right">
+    <span class="pill" id="lab-pill"><i class="dot"></i><span id="lab-pill-text">starting lab</span></span>
+    <span class="chip mono" id="listen-chip">dashboard</span>
+  </div>
+</header>
+
+<main>
+  <!-- ============================ OVERVIEW ============================ -->
+  <section class="view active" data-view="overview">
+    <div class="hero">
+      <article class="card status-card">
+        <div class="card-top">
+          <h2>Tunnel</h2>
+          <span class="tag" id="transport-tag">websocket</span>
+        </div>
+        <div class="state-line">
+          <span class="state-dot" id="state-dot"></span>
+          <div>
+            <div class="state-title" id="state-title">Waiting for the lab…</div>
+            <div class="state-sub mono" id="state-sub">a real relay + client on loopback</div>
+          </div>
+        </div>
+        <dl class="facts">
+          <div><dt>Relay endpoint</dt><dd class="mono" id="fact-relay">—</dd></div>
+          <div><dt>TLS</dt><dd class="mono" id="fact-tls">—</dd></div>
+          <div><dt>Certificate</dt><dd class="mono" id="fact-cert">—</dd></div>
+          <div><dt>Pin</dt><dd class="mono copyable" id="fact-pin" title="click to copy">—</dd></div>
+          <div><dt>Session</dt><dd class="mono" id="fact-session">—</dd></div>
+          <div><dt>PSK fingerprint</dt><dd class="mono" id="fact-psk">—</dd></div>
+        </dl>
+        <div class="mini-stats">
+          <div><span class="mini-label">RTT</span><b class="mono" id="fact-rtt">—</b></div>
+          <div><span class="mini-label">Uptime</span><b class="mono" id="fact-uptime">—</b></div>
+          <div><span class="mini-label">Socks</span><b class="mono" id="fact-socks">—</b></div>
+        </div>
+      </article>
+
+      <article class="card throughput-card">
+        <div class="card-top">
+          <h2>Throughput</h2>
+          <span class="tag subtle" id="sample-tag">last 90 s</span>
+        </div>
+        <div class="rates">
+          <div class="rate up">
+            <span class="arrow">↑</span>
+            <div><b class="mono" id="rate-up">0 B/s</b><span>uplink to relay</span></div>
+          </div>
+          <div class="rate down">
+            <span class="arrow">↓</span>
+            <div><b class="mono" id="rate-down">0 B/s</b><span>downlink from relay</span></div>
+          </div>
+        </div>
+        <canvas id="spark" height="120" aria-label="throughput chart"></canvas>
+        <div class="totals">
+          <div><span>Sent</span><b class="mono" id="total-sent">0 B</b></div>
+          <div><span>Received</span><b class="mono" id="total-recv">0 B</b></div>
+          <div><span>Payload</span><b class="mono" id="total-payload">0 B</b></div>
+        </div>
+      </article>
+    </div>
+
+    <div class="tiles">
+      <article class="card tile">
+        <span class="tile-label">Tunnel records</span>
+        <b class="tile-value mono" id="tile-frames">0</b>
+        <span class="tile-foot"><i class="up-dot"></i><span id="tile-frames-split">↑ 0 · ↓ 0</span></span>
+      </article>
+      <article class="card tile">
+        <span class="tile-label">Wire overhead</span>
+        <b class="tile-value mono" id="tile-overhead">0%</b>
+        <span class="tile-foot">padding + framing</span>
+      </article>
+      <article class="card tile">
+        <span class="tile-label">Active streams</span>
+        <b class="tile-value mono" id="tile-streams">0</b>
+        <span class="tile-foot"><span id="tile-requests">0 requests served</span></span>
+      </article>
+      <article class="card tile">
+        <span class="tile-label">Blocked probes</span>
+        <b class="tile-value mono" id="tile-decoys">0</b>
+        <span class="tile-foot"><span id="tile-policy">0 policy blocks</span></span>
+      </article>
+    </div>
+
+    <div class="grid-2 overview-bottom">
+      <article class="card">
+        <div class="card-top">
+          <h2>Blocker resistance</h2>
+          <button class="ghost small" id="overview-probe">Re-run probes</button>
+        </div>
+        <ul class="checks" id="checks-overview"></ul>
+      </article>
+      <article class="card log-card">
+        <div class="card-top">
+          <h2>Wire log</h2>
+          <span class="tag subtle">metadata only</span>
+        </div>
+        <div class="wirelog" id="wirelog-overview"></div>
+      </article>
+    </div>
+
+    <article class="card activity-card">
+      <div class="card-top">
+        <h2>Activity</h2>
+        <span class="tag subtle">relay + client</span>
+      </div>
+      <pre class="activity" id="activity"></pre>
+    </article>
+  </section>
+
+  <!-- ============================ WIRE LAB ============================ -->
+  <section class="view" data-view="wire">
+    <article class="card controls">
+      <div class="card-top">
+        <h2>Traffic laboratory</h2>
+        <span class="tag subtle">real relay · real TLS · loopback only</span>
+      </div>
+      <div class="control-grid">
+        <div class="control">
+          <label>Record padding</label>
+          <div class="segmented" data-control="padding">
+            <button data-value="none">none</button>
+            <button data-value="random">random</button>
+            <button data-value="cells">cells</button>
+          </div>
+          <p class="hint">Random bytes inside each encrypted record. <b>none</b> leaks exact payload sizes; <b>cells</b> rounds records to 256-byte cells.</p>
+        </div>
+        <div class="control">
+          <label>Cover traffic</label>
+          <div class="segmented" data-control="cover">
+            <button data-value="none">off</button>
+            <button data-value="low">low</button>
+            <button data-value="medium">medium</button>
+          </div>
+          <p class="hint">Encrypted filler frames when the tunnel is idle, so silence is not a tell.</p>
+        </div>
+        <div class="control">
+          <label>Transport</label>
+          <div class="segmented" data-control="transport">
+            <button data-value="ws">websocket</button>
+            <button data-value="tls">native tls</button>
+          </div>
+          <p class="hint">Both ride inside TLS on 443. WebSocket survives CDNs and reverse proxies; native TLS is leaner.</p>
+        </div>
+        <div class="control">
+          <label>Generated traffic</label>
+          <div class="segmented" data-control="traffic">
+            <button data-value="browse">browse</button>
+            <button data-value="bulk">bulk</button>
+            <button data-value="idle">idle</button>
+          </div>
+          <p class="hint">Browser-like bursts, sustained transfer, or nothing at all.</p>
+        </div>
+        <div class="control slider-control">
+          <label>Timing jitter <b class="mono" id="jitter-value">12 ms</b></label>
+          <input type="range" id="jitter" min="0" max="120" step="2" value="12">
+          <p class="hint">Small random delays before records leave, to blunt timing fingerprints.</p>
+        </div>
+      </div>
+      <div class="control-actions">
+        <button class="primary" id="apply-lab">Apply &amp; restart lab</button>
+        <button class="ghost" id="stop-lab">Stop</button>
+        <button class="ghost" id="start-lab" hidden>Start lab</button>
+        <span class="run-state" id="lab-run-state"></span>
+      </div>
+    </article>
+
+    <div class="grid-2">
+      <article class="card">
+        <div class="card-top">
+          <h2>Record size distribution</h2>
+          <div class="legend">
+            <span><i class="sw sw-up"></i>uplink</span>
+            <span><i class="sw sw-down"></i>downlink</span>
+          </div>
+        </div>
+        <canvas id="hist" height="230" aria-label="record size histogram"></canvas>
+        <div class="size-foot mono" id="hist-foot">waiting for records…</div>
+      </article>
+      <article class="card">
+        <div class="card-top"><h2>What the sizes say</h2></div>
+        <div class="metric-list">
+          <div><span>Average record</span><b class="mono" id="m-avg">—</b></div>
+          <div><span>Distinct record sizes</span><b class="mono" id="m-unique">—</b></div>
+          <div><span>Median record spacing ↑</span><b class="mono" id="m-jitter-out">—</b></div>
+          <div><span>Median record spacing ↓</span><b class="mono" id="m-jitter-in">—</b></div>
+          <div><span>Cover bytes on the wire</span><b class="mono" id="m-pad">—</b></div>
+          <div><span>Framing + TLS overhead</span><b class="mono" id="m-overhead">—</b></div>
+          <div><span>Records observed</span><b class="mono" id="m-records">—</b></div>
+        </div>
+        <p class="note">An observer sees TLS records, not payload. Padding and jitter decide how much of your traffic shape survives encryption.</p>
+      </article>
+    </div>
+
+    <article class="card">
+      <div class="card-top">
+        <h2>Active probing</h2>
+        <button class="ghost small" id="probe-again">Probe again</button>
+      </div>
+      <p class="section-lead">Every request below hit the real relay over TLS, exactly like a censor would. Nothing identifies a tunnel.</p>
+      <div class="table-wrap">
+        <table class="probe-table">
+          <thead><tr><th>Probe</th><th>What they send</th><th>Relay answered</th><th>Verdict</th><th class="right">ms</th></tr></thead>
+          <tbody id="probe-body"></tbody>
+        </table>
+      </div>
+    </article>
+
+    <div class="grid-2">
+      <article class="card">
+        <div class="card-top"><h2>Blocked or not</h2></div>
+        <ul class="checks" id="checks-wire"></ul>
+      </article>
+      <article class="card log-card">
+        <div class="card-top"><h2>Frame stream</h2><span class="tag subtle">last 28 records</span></div>
+        <div class="wirelog tall" id="wirelog-wire"></div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ============================ CONNECT ============================ -->
+  <section class="view" data-view="connect">
+    <div class="grid-2 connect-top">
+      <article class="card">
+        <div class="card-top"><h2>Import a connection link</h2><span class="tag subtle">hedu1://</span></div>
+        <p class="section-lead">Paste the link printed by <code>heduvpn relay</code> or generated by the wizard. The relay address, SNI, pinned certificate and pre-shared key all live in the fragment.</p>
+        <textarea id="link-input" spellcheck="false" placeholder="hedu1://vpn.example.com:443#eyJrIjoi…"></textarea>
+        <div class="control-actions">
+          <button class="primary" id="import-link">Import link</button>
+          <button class="ghost" id="copy-link">Copy link</button>
+        </div>
+        <div id="link-summary" class="summary" hidden></div>
+      </article>
+
+      <article class="card">
+        <div class="card-top"><h2>Run a local client</h2><span class="tag subtle">this machine</span></div>
+        <p class="section-lead">The dashboard can host the tunnel client for real. Point apps at the SOCKS5 or HTTP proxy shown below — no TUN device, no admin rights.</p>
+        <div class="connect-state">
+          <span class="state-dot" id="client-dot"></span>
+          <div>
+            <div class="state-title" id="client-title">No link imported</div>
+            <div class="state-sub mono" id="client-sub">import a connection link to continue</div>
+          </div>
+        </div>
+        <div class="mini-stats bordered">
+          <div><span class="mini-label">SOCKS5</span><b class="mono copyable" id="client-socks">—</b></div>
+          <div><span class="mini-label">HTTP proxy</span><b class="mono copyable" id="client-http">off</b></div>
+          <div><span class="mini-label">Server</span><b class="mono" id="client-server">—</b></div>
+        </div>
+        <div class="control-actions">
+          <button class="primary" id="start-client" disabled>Start client</button>
+          <button class="ghost" id="stop-client" disabled>Stop</button>
+          <button class="ghost" id="export-config" disabled>Download config</button>
+        </div>
+        <label class="switch-row" for="sysproxy-toggle">
+          <input type="checkbox" id="sysproxy-toggle">
+          <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+          <span class="switch-text">Use as the system proxy</span>
+          <span class="switch-note mono" id="sysproxy-note"></span>
+        </label>
+      </article>
+    </div>
+
+    <article class="card" id="live-relay-card" hidden>
+      <div class="card-top"><h2>Live relay</h2><span class="tag subtle" id="live-relay-listen"></span></div>
+      <div class="tiles embedded" id="live-relay-tiles"></div>
+      <div class="table-wrap">
+        <table class="probe-table">
+          <thead><tr><th>Top destinations</th><th class="right">connections</th></tr></thead>
+          <tbody id="live-relay-dest"></tbody>
+        </table>
+      </div>
+    </article>
+
+    <div class="grid-2">
+      <article class="card">
+        <div class="card-top"><h2>Desktop app</h2><span class="tag subtle">windows · macOS · linux</span></div>
+        <p class="section-lead">The same engine ships as a native desktop app that points your operating-system proxy at the tunnel — browsers and most apps are covered, with auto-reconnect and live wire telemetry.</p>
+        <pre class="snippet mono">python -m heduvpn gui</pre>
+        <ul class="bullets">
+          <li>Import a <code>hedu1://</code> link, hit connect, done.</li>
+          <li>Runs as a normal user; flips the per-user system proxy and restores it on exit.</li>
+          <li>Live counters, wire metadata, reconnect backoff, DNS settings.</li>
+        </ul>
+      </article>
+      <article class="card">
+        <div class="card-top"><h2>Point an app at it</h2></div>
+        <div class="metric-list">
+          <div><span>Browser (Firefox)</span><b class="mono">Settings → Network → SOCKS5 → 127.0.0.1:1080</b></div>
+          <div><span>curl</span><b class="mono">curl --socks5-hostname 127.0.0.1:1080 …</b></div>
+          <div><span>Terminal / OS-wide</span><b class="mono">start the GUI and enable “use as system proxy”</b></div>
+        </div>
+        <p class="note">SOCKS5 handles DNS remotely or locally (configurable), so hostnames never need to resolve in the clear.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ============================ GUIDE ============================ -->
+  <section class="view" data-view="guide">
+    <article class="card hero-doc">
+      <h1>Two commands, one ordinary HTTPS port.</h1>
+      <p>HeduVPN is a self-hosted VPN built to keep working on networks that block VPNs. It does not use WireGuard, OpenVPN, PPTP or a proprietary handshake on an unusual port. It speaks TLS 1.3 on 443, uses WebSocket or a native TLS record stream, pads its records and answers probes with a normal website.</p>
+      <div class="doc-grid">
+        <div>
+          <h3>1 · On your VPS</h3>
+          <pre class="snippet mono" id="cmd-relay">python -m heduvpn relay --domain vpn.example.com --port 443</pre>
+          <button class="ghost small copy-cmd" data-target="cmd-relay">Copy command</button>
+          <p class="note">Prints a <code>hedu1://</code> link and keeps running. Needs ports 80+443 open, a DNS record, and root (or <code>setcap</code>) for 443. A Let's Encrypt certificate works too: <code>--cert/--key</code>.</p>
+        </div>
+        <div>
+          <h3>2 · On your machine</h3>
+          <pre class="snippet mono" id="cmd-client">python -m heduvpn client --link "hedu1://…"</pre>
+          <button class="ghost small copy-cmd" data-target="cmd-client">Copy command</button>
+          <p class="note">Starts a local SOCKS5 proxy on <code>127.0.0.1:1080</code> with automatic reconnects and session rotation. Add <code>--http-proxy 8080</code> for an HTTP CONNECT proxy.</p>
+        </div>
+      </div>
+      <h3>This dashboard</h3>
+      <pre class="snippet mono" id="cmd-dash">python -m heduvpn dashboard --port 8000</pre>
+      <button class="ghost small copy-cmd" data-target="cmd-dash">Copy command</button>
+    </article>
+
+    <article class="card">
+      <div class="card-top"><h2>How it avoids blockers</h2></div>
+      <div class="table-wrap">
+        <table class="probe-table doc-table">
+          <thead><tr><th>Blocker technique</th><th>HeduVPN response</th></tr></thead>
+          <tbody>
+            <tr><td>Block non-standard VPN ports</td><td>Everything rides TCP/443 using TLS 1.3, with optional WebSocket inside.</td></tr>
+            <tr><td>Protocol fingerprinting</td><td>No OpenVPN/WireGuard/PPTP signatures. The only outer protocol is TLS, plus HTTP/1.1 upgrade when in WebSocket mode.</td></tr>
+            <tr><td>SNI filtering</td><td>Connect through your own domain, optionally fronted by a CDN. The SNI looks like any other site you host.</td></tr>
+            <tr><td>Certificate / CA inspection</td><td>Clients pin the certificate fingerprint. No public CA needed, and no VPN vendor name anywhere in the chain.</td></tr>
+            <tr><td>Active probing</td><td>Unknown HTTP requests get nginx-style 200/404/400 pages. WebSocket upgrades require a short-lived HMAC gate token; without it the path is a plain 404.</td></tr>
+            <tr><td>Replay of captured handshakes</td><td>The gate token expires in two minutes; the tunnel handshake is a fresh AEAD exchange under a 256-bit PSK with timestamp checks.</td></tr>
+            <tr><td>Packet-size analysis</td><td>Records are padded (<code>random</code> or 256-byte <code>cells</code>), payload length never appears on the wire, and jitter decorrelates timing.</td></tr>
+            <tr><td>Idle-pattern detection</td><td>Optional cover traffic keeps an idle tunnel statistically similar to a live WebSocket app.</td></tr>
+            <tr><td>Long-session correlation</td><td>Session rotation replaces the transport periodically; every session gets fresh ChaCha20-Poly1305 keys.</td></tr>
+            <tr><td>Legacy device / DPI appliance</td><td>WebSocket mode survives reverse proxies, CDNs and most middleboxes because it is ordinary HTTP traffic.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <div class="grid-2">
+      <article class="card">
+        <div class="card-top"><h2>What no VPN can hide</h2></div>
+        <ul class="bullets warn">
+          <li><b>The destination IP.</b> A determined censor that blocks your relay's IP will block it. Mitigate with CDN fronting, rotating relays, or a relay in a friendly network.</li>
+          <li><b>Total traffic volume and long-term flow shape.</b> Padding hides record sizes, not the fact that you transferred 4 GB today.</li>
+          <li><b>Client-side compromise.</b> Malware, keyloggers, or a hostile OS see plaintext before it enters the tunnel.</li>
+          <li><b>Legal and policy risk.</b> Using a VPN can be restricted or illegal where you live. This tool is for privacy, research and access to information — you remain responsible for how you use it.</li>
+        </ul>
+      </article>
+      <article class="card">
+        <div class="card-top"><h2>Operations notes</h2></div>
+        <ul class="bullets">
+          <li>Keep the PSK secret: it is the only credential. Rotate it by regenerating the link.</li>
+          <li>The relay blocks private/loopback targets and SMTP ports by default; adjust <code>allow_private</code>, <code>allow_ports</code>, <code>block_ports</code> deliberately.</li>
+          <li>Behind a CDN: run the relay with <code>tls: false</code> on a loopback/private port, let the CDN terminate TLS, and import a link with <code>verify: system</code>.</li>
+          <li>Run the dashboard on loopback. It can export your full configuration including the PSK.</li>
+          <li>Wire-level counters are metadata only; HeduVPN never logs payload bytes.</li>
+        </ul>
+      </article>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span>HeduVPN <span class="mono" id="version">v1.0.0</span></span>
+  <span class="foot-sep">·</span>
+  <span>TLS 1.3 · ChaCha20-Poly1305 · pre-shared keys · zero telemetry</span>
+  <span class="foot-sep">·</span>
+  <span id="footer-env">local</span>
+</footer>
+
+<div class="toast" id="toast" role="status"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

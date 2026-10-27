@@ -1,0 +1,44 @@
+# HeduVPN behind nginx: TLS terminated by nginx, relay on loopback.
+#
+#   heduvpn relay --plaintext --domain vpn.example.com \
+#     --listen-host 127.0.0.1 --port 8080 --state-dir /var/lib/heduvpn
+#
+# The link printed by the relay uses verify=system, port 443 and transport=ws.
+
+server {
+    listen 443 ssl http2;
+    server_name vpn.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/vpn.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/vpn.example.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 1h;
+
+    # The tunnel endpoint. WebSocket upgrades need HTTP/1.1 and no buffering.
+    location = /ws {
+        proxy_pass         http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   Upgrade $http_upgrade;
+        proxy_set_header   Connection "upgrade";
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_buffering    off;
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+    }
+
+    # The cover story: a completely ordinary static site.
+    location / {
+        root      /var/www/vpn-decoy;
+        index     index.html;
+        try_files $uri $uri/ =404;
+    }
+}
+
+# Redirect plain HTTP to HTTPS.
+server {
+    listen 80;
+    server_name vpn.example.com;
+    return 301 https://$host$request_uri;
+}
