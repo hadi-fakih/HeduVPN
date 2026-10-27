@@ -339,3 +339,39 @@ No response contains the strings "HeduVPN", "VPN", "tunnel" or the PSK.
   WebSocket apps.
 - Nothing in the protocol is tied to a particular port, domain or certificate
   authority. Port 443 and a public DNS name are operational choices.
+
+---
+
+## 12. Implementation notes
+
+### Shutdown ordering
+
+`Server.wait_closed()` waits for in-flight connection handlers from Python 3.12
+on, and a relay handler runs an entire tunnel session. The relay therefore
+signals every session to stop **before** it waits on the listener, and every
+close path is bounded by `heduvpn.transport.close_server()` /
+`close_writer()`. An implementation that waits on the listener first will
+deadlock until the idle timeout.
+
+### Serialised record writes
+
+A `FrameCodec` may be shared by many producers (streams, cover traffic,
+keepalive). Encoding and writing must happen under one lock: if two tasks
+encode in one order and write in another, the receiver's counter-based nonce
+sequence desynchronises and every following record fails authentication.
+
+### Python 3.10 STARTTLS
+
+`StreamWriter.start_tls()` only exists from Python 3.11 on. Because the TLS leg
+is established by upgrading an existing TCP connection (needed for upstream
+SOCKS proxies and for `--test` fetches), the client implements the upgrade
+directly on 3.10: `loop.start_tls()` plus re-pointing the stream protocol at
+the wrapped transport. Without that, no connection can be established at all
+on 3.10.
+
+### Keepalive
+
+The client sends a PING when it has not *received* anything for the keepalive
+interval, and drops the session after the keepalive timeout. Liveness must be
+measured on the receive side; keying it off the last transmit time lets cover
+traffic mask a dead peer.

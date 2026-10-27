@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import os
 
 import pytest
@@ -7,7 +6,7 @@ import pytest
 from heduvpn import crypto, protocol
 from heduvpn.relay import Relay, RelaySettings
 from heduvpn.httpwire import read_response_headers_with_rest
-from heduvpn.transport import Socks5Error, socks5_connect, tls_connect
+from heduvpn.transport import Socks5Error, close_writer, socks5_connect, tls_connect
 from heduvpn.websocket import client_handshake
 from tests.util import free_port, lab_env, run
 
@@ -150,9 +149,7 @@ def test_http_connect_proxy(tmp_path):
             data = await asyncio.wait_for(reader.read(), 10)
             body = data.split(b"\r\n\r\n", 1)[1]
             assert len(body) == 2048
-            writer.close()
-            with contextlib.suppress(Exception):
-                await writer.wait_closed()
+            await close_writer(writer)
 
     run(scenario())
 

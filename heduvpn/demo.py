@@ -28,7 +28,14 @@ from .httpwire import read_response_headers_with_rest
 from .link import pin_from_cert
 from .protocol import PAD_MODES
 from .relay import Relay, RelaySettings
-from .transport import TransportError, client_ssl_context, socks5_connect, tls_connect
+from .transport import (
+    TransportError,
+    client_ssl_context,
+    close_server,
+    close_writer,
+    socks5_connect,
+    tls_connect,
+)
 from .websocket import WSStream
 
 DEFAULT_PROFILE: dict[str, Any] = {
@@ -236,9 +243,7 @@ class DemoLab:
                 await self.relay.stop()
             self.relay = None
         if self._origin_server:
-            self._origin_server.close()
-            with contextlib.suppress(Exception):
-                await self._origin_server.wait_closed()
+            await close_server(self._origin_server)
             self._origin_server = None
 
     # -- origin server -----------------------------------------------------
@@ -327,9 +332,7 @@ class DemoLab:
                 if not chunk:
                     break
                 received += len(chunk)
-            writer.close()
-            with contextlib.suppress(Exception):
-                await writer.wait_closed()
+            await close_writer(writer)
             if received >= n:
                 self.traffic["ok"] += 1
                 self.traffic["payload"] += received

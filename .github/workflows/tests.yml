@@ -8,16 +8,24 @@ on:
 permissions:
   contents: read
 
+# A new push supersedes an older run on the same branch, so a hung job can
+# never block the result of the current commit.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   pytest:
     runs-on: ubuntu-latest
+    # Hard ceiling: no test can wedge the pipeline for hours.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -28,4 +36,27 @@ jobs:
       - name: Byte-compile
         run: python -m compileall -q heduvpn
       - name: Tests
-        run: python -m pytest -q
+        run: |
+          set -o pipefail
+          python -m pytest -q 2>&1 | tee pytest.log
+      # Job logs live in blob storage, which some environments cannot read;
+      # surface the failures as annotations so they are visible from the API.
+      - name: Report failures
+        if: failure()
+        run: |
+          python - <<'PY'
+          import pathlib
+          import re
+
+          log = pathlib.Path("pytest.log")
+          if not log.exists():
+              print("::error::pytest produced no log (the run hung or crashed before reporting)")
+              raise SystemExit(0)
+          text = log.read_text(errors="replace")
+          lines = [line for line in text.splitlines() if re.match(r"^(FAILED|ERROR)\s", line)]
+          if not lines:
+              tail = text.strip().splitlines()[-25:]
+              lines = tail or ["pytest failed without output"]
+          for line in lines[:25]:
+              print("::error::" + line.replace("%", "%25").replace("\r", ""))
+          PY

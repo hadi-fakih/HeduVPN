@@ -51,6 +51,7 @@ from .protocol import (
 from .transport import (
     TLSInfo,
     TransportError,
+    close_writer,
     socks5_connect,
     tls_connect,
     tls_upgrade,
@@ -310,9 +311,7 @@ class LocalConn:
         for task in self.tasks:
             if task is not asyncio.current_task():
                 task.cancel()
-        with contextlib.suppress(Exception):
-            self.writer.close()
-            await self.writer.wait_closed()
+        await close_writer(self.writer)
 
     # -- tunnel events -----------------------------------------------------
     def reply_success(self, payload: bytes) -> None:
@@ -343,9 +342,7 @@ class LocalConn:
         for task in self.tasks:
             if task is not asyncio.current_task():
                 task.cancel()
-        with contextlib.suppress(Exception):
-            self.writer.close()
-            await self.writer.wait_closed()
+        await close_writer(self.writer)
 
     def deliver(self, data: bytes) -> None:
         if self.closed:
@@ -749,7 +746,7 @@ class TunnelClient:
             return
         try:
             await self._socks_negotiate(reader, writer)
-        except (asyncio.IncompleteReadError, ConnectionError, OSError, HttpError):
+        except (asyncio.IncompleteReadError, asyncio.TimeoutError, ConnectionError, OSError, HttpError):
             pass
         except Exception as exc:  # pragma: no cover - defensive
             self.log(f"socks handler error: {exc}")
@@ -857,7 +854,14 @@ class TunnelClient:
                 )
                 await writer.drain()
                 writer.close()
-        except (asyncio.IncompleteReadError, ConnectionError, OSError, HttpError, ValueError):
+        except (
+            asyncio.IncompleteReadError,
+            asyncio.TimeoutError,
+            ConnectionError,
+            OSError,
+            HttpError,
+            ValueError,
+        ):
             with contextlib.suppress(Exception):
                 writer.close()
 

@@ -47,7 +47,15 @@ from .protocol import (
     decode_address,
     read_handshake_message,
 )
-from .transport import TLSInfo, TLSStream, TransportError, server_ssl_context, tcp_connect
+from .transport import (
+    TLSInfo,
+    TLSStream,
+    TransportError,
+    close_server,
+    close_writer,
+    server_ssl_context,
+    tcp_connect,
+)
 from .websocket import WSStream, is_websocket_request, server_handshake
 
 DEFAULT_BLOCK_PORTS = (25, 465, 587)  # SMTP: common abuse vector, configurable
@@ -211,9 +219,7 @@ class RelayStream:
         for task in self.tasks:
             if task is not asyncio.current_task():
                 task.cancel()
-        with contextlib.suppress(Exception):
-            self.writer.close()
-            await self.writer.wait_closed()
+        await close_writer(self.writer)
 
 
 class RelaySession:
@@ -487,13 +493,15 @@ class Relay:
 
     async def stop(self) -> None:
         self._stopping = True
-        if self._server:
-            self._server.close()
-            with contextlib.suppress(Exception):
-                await self._server.wait_closed()
-            self._server = None
+        # Ask every live session to finish *before* waiting on the listener.
+        # Since Python 3.12, Server.wait_closed() waits for in-flight connection
+        # handlers, and a handler here runs an entire tunnel session -- waiting
+        # first would deadlock until the idle timeout.
         for session in list(self.sessions):
             session.closed.set()
+        if self._server:
+            await close_server(self._server)
+            self._server = None
         for _ in range(50):
             if not self.sessions:
                 break

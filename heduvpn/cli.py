@@ -635,7 +635,7 @@ async def _probe_relay(args) -> None:
 async def _http_through_socks(socks_host: str, socks_port: int, url: str) -> None:
     from urllib.parse import urlsplit
 
-    from .transport import socks5_connect
+    from .transport import close_writer, socks5_connect
 
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https"):
@@ -669,9 +669,7 @@ async def _http_through_socks(socks_host: str, socks_port: int, url: str) -> Non
         if preview:
             print(f"  {'body'.ljust(10)}{preview[0][:100]}")
     print()
-    writer.close()
-    with contextlib.suppress(Exception):
-        await writer.wait_closed()
+    await close_writer(writer)
     ok("request travelled through the tunnel")
 
 
