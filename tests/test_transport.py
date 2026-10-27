@@ -58,6 +58,8 @@ async def _upgrade_and_ping(port: int, pin: str, verify: str = "pin") -> bytes:
 
 
 def test_tls_upgrade_native_path(tmp_path):
+    """Upgrade a plain TCP stream to TLS on whichever path the runtime has."""
+
     async def scenario():
         server, port, pin = await _start_tls_server(tmp_path)
         try:
@@ -69,15 +71,18 @@ def test_tls_upgrade_native_path(tmp_path):
 
 
 def test_tls_upgrade_fallback_without_start_tls(tmp_path, monkeypatch):
-    """Remove StreamWriter.start_tls to emulate Python 3.10 and use the shim."""
-    assert hasattr(asyncio.StreamWriter, "start_tls")
+    """Exercise the shim.
+
+    On 3.11+ ``StreamWriter.start_tls`` is removed to emulate a 3.10 interpreter;
+    on a genuine 3.10 the shim is already the only path, so there is nothing to
+    remove and the test simply covers it as-is.
+    """
 
     async def scenario():
         server, port, pin = await _start_tls_server(tmp_path)
         try:
             monkeypatch.delattr(asyncio.StreamWriter, "start_tls", raising=False)
             try:
-                assert not hasattr(asyncio.StreamWriter, "start_tls")
                 assert await _upgrade_and_ping(port, pin) == b"pong:ping"
             finally:
                 monkeypatch.undo()
