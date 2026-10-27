@@ -360,6 +360,15 @@ keepalive). Encoding and writing must happen under one lock: if two tasks
 encode in one order and write in another, the receiver's counter-based nonce
 sequence desynchronises and every following record fails authentication.
 
+### Python 3.10 STARTTLS
+
+`StreamWriter.start_tls()` only exists from Python 3.11 on. Because the TLS leg
+is established by upgrading an existing TCP connection (needed for upstream
+SOCKS proxies and for `--test` fetches), the client implements the upgrade
+directly on 3.10: `loop.start_tls()` plus re-pointing the stream protocol at
+the wrapped transport. Without that, no connection can be established at all
+on 3.10.
+
 ### Keepalive
 
 The client sends a PING when it has not *received* anything for the keepalive

@@ -171,6 +171,49 @@ def _cert_common_name(der: bytes) -> str:
         return ""
 
 
+async def _stream_start_tls(
+    writer: asyncio.StreamWriter,
+    ctx: ssl.SSLContext,
+    server_hostname: str | None,
+    handshake_timeout: float,
+) -> None:
+    """STARTTLS an existing TCP stream.
+
+    ``StreamWriter.start_tls()`` only exists from Python 3.11 on.  On 3.10 the
+    equivalent steps are performed directly: hand the transport to the loop so
+    it can wrap it, then re-point the stream protocol at the TLS transport.
+    """
+    start_tls = getattr(writer, "start_tls", None)
+    if start_tls is not None:
+        await start_tls(
+            ctx,
+            server_hostname=server_hostname,
+            ssl_handshake_timeout=handshake_timeout,
+        )
+        return
+
+    loop = asyncio.get_running_loop()
+    protocol = writer._protocol  # type: ignore[attr-defined]
+    transport = await loop.start_tls(
+        writer.transport,
+        protocol,
+        ctx,
+        server_side=False,
+        server_hostname=server_hostname,
+        ssl_handshake_timeout=handshake_timeout,
+    )
+    if transport is None:  # pragma: no cover - defensive
+        raise TransportError("the event loop refused to wrap the connection in TLS")
+    writer._transport = transport  # type: ignore[attr-defined]
+    replace = getattr(protocol, "_replace_writer", None)
+    if replace is not None:
+        replace(writer)
+    else:  # Python 3.10: StreamReaderProtocol has no _replace_writer
+        protocol._stream_writer = writer  # type: ignore[attr-defined]
+        protocol._transport = transport  # type: ignore[attr-defined]
+        protocol._over_ssl = True  # type: ignore[attr-defined]
+
+
 async def tls_upgrade(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
@@ -186,10 +229,10 @@ async def tls_upgrade(
     ctx = client_ssl_context(verify)
     try:
         await asyncio.wait_for(
-            writer.start_tls(ctx, server_hostname=sni or None, ssl_handshake_timeout=timeout),
+            _stream_start_tls(writer, ctx, sni or None, timeout),
             timeout,
         )
-    except (OSError, ssl.SSLError, asyncio.TimeoutError, ValueError) as exc:
+    except (OSError, ssl.SSLError, asyncio.TimeoutError, ValueError, TransportError) as exc:
         try:
             writer.close()
         except Exception:
