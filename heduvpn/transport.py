@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import ipaddress
 import ssl
@@ -16,6 +17,36 @@ from .protocol import Stream, StreamClosed
 
 class TransportError(Exception):
     """Network-level failure (DNS, TCP, TLS, pin mismatch...)."""
+
+
+# Shutdown must never be able to wedge a process or a test run.  From Python
+# 3.12 on, ``Server.wait_closed()`` waits for in-flight connection handlers, so
+# closing a listener that is still serving a long-lived tunnel can deadlock if
+# the handlers are only asked to stop afterwards.  And ``StreamWriter.
+# wait_closed()`` can block indefinitely when the peer has already vanished.
+# Every close path therefore uses these helpers, which are bounded and never
+# raise.
+CLOSE_TIMEOUT = 5.0
+
+
+async def close_writer(writer: asyncio.StreamWriter, timeout: float = CLOSE_TIMEOUT) -> None:
+    """Close a socket and wait for it, but never forever."""
+    with contextlib.suppress(Exception):
+        writer.close()
+    with contextlib.suppress(Exception):
+        await asyncio.wait_for(writer.wait_closed(), timeout)
+
+
+async def close_server(
+    server: asyncio.AbstractServer | None, timeout: float = CLOSE_TIMEOUT
+) -> None:
+    """Stop accepting, then wait for the listener to close with a bound."""
+    if server is None:
+        return
+    with contextlib.suppress(Exception):
+        server.close()
+    with contextlib.suppress(Exception):
+        await asyncio.wait_for(server.wait_closed(), timeout)
 
 
 # ---------------------------------------------------------------------------
@@ -61,11 +92,9 @@ class TLSStream(Stream):
         except Exception:
             pass
 
-    async def wait_closed(self) -> None:
-        try:
-            await self.writer.wait_closed()
-        except Exception:
-            pass
+    async def wait_closed(self, timeout: float = 60.0) -> None:
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(self.writer.wait_closed(), timeout)
 
     @property
     def peer(self) -> str:

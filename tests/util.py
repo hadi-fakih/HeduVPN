@@ -13,7 +13,7 @@ from heduvpn.client import TunnelClient
 from heduvpn.config import CamouflageConfig, ClientSettings, ConnectionConfig, SocksConfig
 from heduvpn.link import pin_from_cert
 from heduvpn.relay import Relay, RelaySettings
-from heduvpn.transport import socks5_connect
+from heduvpn.transport import close_server, close_writer, socks5_connect
 
 
 def free_port() -> int:
@@ -56,9 +56,7 @@ class Env:
         )
         await writer.drain()
         data = await asyncio.wait_for(reader.read(), 20)
-        writer.close()
-        with contextlib.suppress(Exception):
-            await writer.wait_closed()
+        await close_writer(writer)
         return data.split(b"\r\n\r\n", 1)[1]
 
 
@@ -151,6 +149,4 @@ async def lab_env(
                 task.cancel()
         with contextlib.suppress(Exception):
             await relay.stop()
-        origin.close()
-        with contextlib.suppress(Exception):
-            await origin.wait_closed()
+        await close_server(origin)

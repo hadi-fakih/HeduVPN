@@ -1,8 +1,7 @@
 import asyncio
 
-
-
 from heduvpn import websocket
+from heduvpn.transport import close_server
 
 
 
@@ -38,8 +37,7 @@ def test_binary_roundtrip_over_sockets():
         assert echoed == b"echo:hello"
         assert got["data"] == b"hello"
         ws.close()
-        server.close()
-        await server.wait_closed()
+        await close_server(server)
 
     asyncio.run(scenario())
 
@@ -61,8 +59,7 @@ def test_text_frames_are_ignored():
         await ws.write(b"abc")
         assert await asyncio.wait_for(ws.read_exact(3), 5) == b"abc"
         ws.close()
-        server.close()
-        await server.wait_closed()
+        await close_server(server)
 
     asyncio.run(scenario())
 
@@ -88,8 +85,7 @@ def test_ping_is_answered():
         fin, opcode, payload = await asyncio.wait_for(ws._read_frame(), 5)
         assert opcode == websocket.OP_PONG and payload == b"p"
         ws.close()
-        server.close()
-        await server.wait_closed()
+        await close_server(server)
 
     asyncio.run(scenario())
 

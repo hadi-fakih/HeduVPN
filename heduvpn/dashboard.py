@@ -25,6 +25,7 @@ from .httpwire import HttpError, read_request
 from .link import LinkError, decode_link, encode_link, summarize_link
 from .relay import Relay, RelayError, load_relay_config
 from .systemproxy import SystemProxy
+from .transport import close_server
 
 WEB_ROOT = Path(__file__).resolve().parent / "web"
 MAX_BODY = 512 * 1024
@@ -112,9 +113,7 @@ class Dashboard:
 
     async def stop(self) -> None:
         if self._server:
-            self._server.close()
-            with contextlib.suppress(Exception):
-                await self._server.wait_closed()
+            await close_server(self._server)
             self._server = None
         await self.stop_client()
         await self._stop_lab_quietly()

@@ -540,7 +540,7 @@ python3 -m pip install -e '.[dev]'
 python3 -m pytest
 ```
 
-69 tests cover:
+74 tests cover:
 
 - PSK/token/handshake formats, ACK binding, certificate generation and pinning;
 - address encoding (IPv4/IPv6/domain, IDNA), frame codec for every padding mode,
@@ -551,7 +551,9 @@ python3 -m pytest
   (including a request body sent immediately after `CONNECT`), DNS modes, session
   rotation, private-destination policy, wrong PSK and replayed handshakes;
 - the demo lab against a real loopback relay, the CLI (link/import/relay/doctor), the
-  system-proxy snapshot logic.
+  system-proxy snapshot logic, keepalive liveness, concurrent record ordering, and
+  shutdown that stays prompt with live sessions (including an emulation of the
+  Python 3.12 `Server.wait_closed()` behaviour that once deadlocked `relay.stop()`).
 
 The tests use only loopback sockets and temporary directories; no network access or root
 is required.
@@ -577,7 +579,7 @@ heduvpn/
   gui/            tkinter desktop app
   systemproxy.py  Windows/macOS/GNOME proxy snapshot + restore
   cli.py          command line interface
-tests/            pytest suite (69 tests)
+tests/            pytest suite (74 tests)
 docs/             protocol and threat-model documentation
 deploy/           systemd unit and nginx example
 ```
