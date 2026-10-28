@@ -11,8 +11,8 @@ on:
 permissions:
   contents: write
 
-# Releases are serialised. A stale or wedged run (for example one waiting on a
-# hung test) is superseded by the next merge instead of blocking it forever.
+# Releases are serialised. A stale or wedged run is superseded by the next
+# merge instead of blocking it forever.
 concurrency:
   group: release
   cancel-in-progress: true
