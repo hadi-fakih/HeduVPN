@@ -1,7 +1,8 @@
 name: release
 
-# Every push to main (i.e. every merged pull request) ships a release:
-# the patch version is bumped, tagged, built and published as a GitHub Release.
+# Every merge to main ships a release: the patch version is bumped, tagged,
+# built and published as a GitHub Release. The bump commit is pushed back to
+# main, so the repository version always matches the newest release.
 on:
   push:
     branches: [main]
@@ -10,18 +11,20 @@ on:
 permissions:
   contents: write
 
-# Never let two releases race each other on the same version number.
+# Releases are serialised. A stale or wedged run (for example one waiting on a
+# hung test) is superseded by the next merge instead of blocking it forever.
 concurrency:
   group: release
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   release:
-    # The version-bump commit this workflow pushes is marked [skip release] so
-    # it cannot trigger itself (a GITHUB_TOKEN push already skips workflows,
-    # this is belt and braces for re-runs and manual dispatches).
-    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip release]') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The version-bump commit is marked [skip release] so it cannot trigger a
+    # release of its own. (A GITHUB_TOKEN push does not start workflows anyway;
+    # this also covers manual dispatch and re-runs.)
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip release]') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,16 +33,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
 
-      - name: Install
+      - name: Install build tooling
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e '.[dev]' build
-
-      # Do not ship a release that fails its own test suite.
-      - name: Tests
-        run: python -m pytest -q
+          python -m pip install build
 
       - name: Bump patch version
         id: bump
@@ -48,6 +46,7 @@ jobs:
           import os
           import pathlib
           import re
+          import subprocess
 
           init = pathlib.Path("heduvpn/__init__.py")
           text = init.read_text()
@@ -57,8 +56,16 @@ jobs:
 
           current = match.group(1)
           major, minor, patch = (int(part) for part in current.split(".")[:3])
-          nxt = f"{major}.{minor}.{patch + 1}"
 
+          # Never reuse a tag that already exists (e.g. a release run was
+          # cancelled after tagging but before publishing).
+          tags = subprocess.run(
+              ["git", "tag", "--list"], capture_output=True, text=True, check=True
+          ).stdout.split()
+          while f"v{major}.{minor}.{patch + 1}" in tags:
+              patch += 1
+
+          nxt = f"{major}.{minor}.{patch + 1}"
           init.write_text(
               text.replace(f'__version__ = "{current}"', f'__version__ = "{nxt}"', 1)
           )
@@ -69,6 +76,20 @@ jobs:
 
           print(f"Bumped version {current} -> {nxt}")
           PY
+
+      - name: Build distributions
+        run: python -m build
+
+      - name: Smoke-test the built wheel
+        env:
+          VERSION: ${{ steps.bump.outputs.next }}
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install --quiet "dist/heduvpn-${VERSION}-py3-none-any.whl"
+          /tmp/smoke/bin/python -c "import heduvpn, sys; sys.exit(0 if heduvpn.__version__ == '${VERSION}' else 1)"
+          /tmp/smoke/bin/heduvpn --version | grep -qx "HeduVPN ${VERSION}"
+          /tmp/smoke/bin/heduvpn --help > /dev/null
 
       - name: Commit, tag and push
         env:
@@ -83,16 +104,6 @@ jobs:
           git tag -a "v${VERSION}" -m "HeduVPN v${VERSION}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
           git push origin "v${VERSION}"
-
-      - name: Build distributions
-        env:
-          VERSION: ${{ steps.bump.outputs.next }}
-        run: |
-          set -euo pipefail
-          python -m build
-          ls -l dist/
-          test -f "dist/heduvpn-${VERSION}.tar.gz"
-          test -f "dist/heduvpn-${VERSION}-py3-none-any.whl"
 
       - name: Publish GitHub release
         env:

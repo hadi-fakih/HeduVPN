@@ -34,6 +34,7 @@ with an ordinary web page.
 - [Security model and limits](#security-model-and-limits)
 - [Configuration](#configuration)
 - [Tests](#tests)
+- [Releases](#releases)
 - [Repository layout](#repository-layout)
 - [License](#license)
 
@@ -555,6 +556,30 @@ python3 -m pytest
 
 The tests use only loopback sockets and temporary directories; no network access or root
 is required.
+
+---
+
+## Releases
+
+Releases are cut automatically. Every merge into `main` runs
+[`.github/workflows/release.yml`](.github/workflows/release.yml), which:
+
+1. bumps the patch component of `__version__` in `heduvpn/__init__.py`
+   (the single source of truth, also used by `pyproject.toml` and `heduvpn --version`);
+2. builds the sdist and wheel, then installs the wheel into a throwaway venv and checks
+   `heduvpn --version` reports the new number;
+3. commits the bump as `chore(release): vX.Y.Z [skip release]`, tags it `vX.Y.Z`, and
+   pushes both to `main`;
+4. publishes a GitHub Release for the tag with generated notes and the built artifacts
+   attached.
+
+So the version in the repository always matches the newest release, and nobody has to
+remember to bump it. Feature branches can change the version by hand if needed — the
+workflow only ever increments the patch component.
+
+The bump commit is ignored by the workflow itself (`[skip release]`), and a tag that
+already exists is never reused: if a release run dies after tagging, the next one bumps
+past it instead of failing.
 
 ---
 
